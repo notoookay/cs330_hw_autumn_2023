@@ -113,7 +113,9 @@ def get_icl_prompts(
         prompt += f"{test_input} TL;DR:"
     else:
         # TODO: Implement custom prompt mode
-        raise NotImplementedError()
+        for idx in permutation:
+            prompt += f"{support_inputs[idx]} Summary: {support_labels[idx]} "
+        prompt += f"{test_input} Summary:"
     ### END CODE HERE ###
 
     assert prompt[-1] != " "
