@@ -99,7 +99,21 @@ def get_icl_prompts(
     )  # Your code should use this ordering!
 
     ### START CODE HERE ###
-    assert False, "Complete this for Q1.1a"
+    if prompt_mode == "babi":
+        for idx in permutation:
+            prompt += f"{support_inputs[idx]} In the {support_labels[idx]}. "
+        prompt += f"{test_input} In the"
+    elif prompt_mode == "none": 
+        for idx in permutation:
+            prompt += f"{support_inputs[idx]} {support_labels[idx]} "
+        prompt += f"{test_input}"
+    elif prompt_mode == "tldr":
+        for idx in permutation:
+            prompt += f"{support_inputs[idx]} TL;DR: {support_labels[idx]} "
+        prompt += f"{test_input} TL;DR:"
+    else:
+        # TODO: Implement custom prompt mode
+        raise NotImplementedError()
     ### END CODE HERE ###
 
     assert prompt[-1] != " "
@@ -181,7 +195,18 @@ def do_sample(
     sampled_tokens = []
     # Complete this for Q1.1b
     ### START CODE HERE ###
-    assert False, "Complete this for Q1.1b"
+    model.eval()
+    with torch.inference_mode():
+        past_key_values = None
+        for _ in range(max_tokens):
+            outputs = model(input_ids=input_ids, past_key_values=past_key_values, use_cache=True)
+            logits = outputs.logits[:, -1, :]
+            next_token = torch.argmax(logits, dim=-1)
+            if next_token.item() in stop_tokens:
+                break # Do not include stop token
+            sampled_tokens.append(next_token.item())
+            input_ids = next_token.unsqueeze(0) # Only the next token is needed if we use past_key_values
+            past_key_values = outputs.past_key_values
     ### END CODE HERE ###
     return sampled_tokens
 
@@ -245,7 +270,10 @@ def run_icl(
                             #   my_tensor.to(DEVICE), where DEVICE is defined at lines 32-35.
                             decoded_prediction = ""
                             # YOUR CODE HERE, complete for Q1.1c. Should be ~5-10 lines of code.
-                            assert False, "Complete this for Q1.1c"
+                            prompts = get_icl_prompts(support_x, support_y, test_input, prompt_mode)
+                            input_ids = tokenizer(prompts, return_tensors="pt").input_ids.to(DEVICE)
+                            sampled_tokens = do_sample(model, input_ids, stop_tokens, max_tokens)
+                            decoded_prediction = tokenizer.decode(sampled_tokens)
                             # END YOUR CODE
 
                             predictions.append(decoded_prediction)
