@@ -64,7 +64,9 @@ class LoRALayerWrapper(nn.Module):
         ###
         self.lora_A, self.lora_B = None, None
         ## YOUR CODE HERE, complete for Q2.2b
-        assert False, "Complete this for Q2.2b"
+        shape = base_module.weight.shape # (d1, d2)
+        self.lora_A = nn.Parameter(torch.randn(shape[0], lora_rank) / np.sqrt(lora_rank)) # (d1, r)
+        self.lora_B = nn.Parameter(torch.randn(shape[1], lora_rank) / np.sqrt(lora_rank)) # (d2, r)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         base_out = self.base_module(x)  # The output of the pre-trained module.
@@ -74,8 +76,11 @@ class LoRALayerWrapper(nn.Module):
         ###
 
         ## YOUR CODE HERE, complete for Q2.2b
-        assert False, "Complete this for Q2.2b"
-        pass
+        lora_output = torch.matmul(
+            torch.matmul(x, self.lora_A), self.lora_B.T
+        )  # (batch_size, d1) * (d1, r) * (r, d2) = (batch_size, d2)
+
+        return base_out + lora_output
 
 
 def parameters_to_fine_tune(model: nn.Module, mode: str) -> Iterable[nn.Parameter]:
@@ -106,21 +111,44 @@ def parameters_to_fine_tune(model: nn.Module, mode: str) -> Iterable[nn.Paramete
     elif mode == "last":
         # Only fine tune the last 2 transformer blocks
         # Complete this for Q2.1
-        assert False, "Complete this for Q2.1"
+        all_layers = model.transformer.h
+        last_layers = all_layers[-2:]
+        print(f"Trained layer num: {len(last_layers)}")
+        parameters_to_fine_tune = []
+        for layer in last_layers:
+            for name, param in layer.named_parameters():
+                parameters_to_fine_tune.append(param)
     elif mode == "first":
         # Only fine tune the first 2 transformer blocks
         # Complete this for Q2.1
-        assert False, "Complete this for Q2.1"
+        all_layers = model.transformer.h
+        first_layers = all_layers[:2]
+        print(f"Trained layer num: {len(first_layers)}")
+        parameters_to_fine_tune = []
+        for layer in first_layers:
+            for name, param in layer.named_parameters():
+                parameters_to_fine_tune.append(param)
     elif mode == "middle":
         # Only fine tune middle 2 transformer blocks
         # Complete this for Q2.1
-        assert False, "Complete this for Q2.1"
+        all_layers = model.transformer.h
+        all_layer_num = len(all_layers)
+        middle_layers = all_layers[all_layer_num // 2 - 1 : all_layer_num // 2 + 1]
+        print(f"Trained layer num: {len(middle_layers)}")
+        parameters_to_fine_tune = []
+        for layer in middle_layers:
+            for name, param in layer.named_parameters():
+                parameters_to_fine_tune.append(param)
     elif mode.startswith("lora"):
         # Only fine tune the rank decomposition matrices A and B from the LoRA layers.
         # Hint: consider using the `.modules()` function of nn.Module and checking for modules that
         # are an instance of LoRALayerWrapper.
         # Complete this for Q2.2c
-        assert False, "Complete this for Q2.2c"
+        parameters_to_fine_tune = []
+        for module in model.modules():
+            if isinstance(module, LoRALayerWrapper):
+                parameters_to_fine_tune.append(module.lora_A)
+                parameters_to_fine_tune.append(module.lora_B)
     else:
         raise ValueError(f"Unrecognized fine-tuning mode {mode}")
 
@@ -160,7 +188,12 @@ def get_loss(unnormalized_logits: torch.Tensor, targets: torch.Tensor) -> torch.
         # Remember that the target tensor may contain -100 values, which should be masked out
         # and that an off-by-one shift is needed between the logits and targets.
         # Complete this for Q2.2d
-        assert False, "Complete this for Q2.2d"
+        targets = targets[:, 1:] # remove the first token, (batch_size, sequence_length - 1)
+        unnormalized_logits = unnormalized_logits[:, :-1] # remove the last token, (batch_size, sequence_length - 1, vocab_size)
+        loss = torch.functional.F.cross_entropy(
+            unnormalized_logits.flatten(0, 1),
+            targets.flatten()
+        )
     else:
         raise ValueError(
             f"Logits should either be 2-dim (for classification) or 3-dim (for generation); got {unnormalized_logits.dim()}"
@@ -204,7 +237,9 @@ def get_acc(unnormalized_logits: torch.Tensor, targets: torch.Tensor) -> torch.T
     elif unnormalized_logits.dim() == 3:
         # This is the generation case.
         # Complete this for Q2.2d
-        assert False, "Complete this for Q2.2d"
+        predicted_classes = torch.argmax(unnormalized_logits, dim=-1) # (batch_size, sequence_length)
+        mask = targets != -100
+        accuracy = (predicted_classes[mask] == targets[mask]).float().mean()
     else:
         raise ValueError(
             f"Logits should either be 2-dim (for classification) or 3-dim (for generation); got {unnormalized_logits.dim()}"
@@ -315,7 +350,19 @@ def tokenize_gpt2_batch(
     """
     combined_sequences = None
     # YOUR CODE HERE, complete for Q2.2e
-    assert False, "Complete for Q2.2e"
+    combined_sequences = tokenizer(
+        [x_ + y_ for x_, y_ in zip(x, y)], return_tensors="pt", padding=True
+    ).to(DEVICE)  # pad token should already be added
+    combined_sequences["labels"] = torch.full_like(
+        combined_sequences["input_ids"], -100
+    ).to(DEVICE)
+    for i, (x_, y_) in enumerate(zip(x, y)):
+        x_tokens = tokenizer(x_, return_tensors="pt")["input_ids"].squeeze()
+        y_tokens = tokenizer(y_, return_tensors="pt")["input_ids"].squeeze()
+        start = x_tokens.shape[0]
+        end = start + y_tokens.shape[0]
+        combined_sequences["labels"][i, start : end] = y_tokens
+
     return combined_sequences
 
 
@@ -373,7 +420,19 @@ def ft_gpt2(model, tok, x, y, mode, dataset, batch_size=8, grad_accum=8):
         # Note: the ** operator will unpack a dictionary into keyword arguments to a function (such as your model)
 
         # YOUR CODE HERE, complete for Q2.2f
-        assert False, "Complete for Q2.2f"
+        batch = tokenize_gpt2_batch(tok, [x[i] for i in batch_idxs], [y[i] for i in batch_idxs])
+        outputs = model(**batch, use_cache=False)
+        loss = get_loss(outputs.logits, batch["labels"])
+        assert torch.equal(loss, outputs.loss) # check if the loss is correct, delete this
+        loss = loss / grad_accum # This should equals to the gradient accumulation be divided by grad_accum
+        loss.backward()
+        # accumulate the gradients
+        if step % grad_accum == 0 and step > 0:
+            optimizer.step()
+            optimizer.zero_grad()
+
+        if args.debug:
+            break
         # END YOUR CODE
 
         if step % (grad_accum * 5) == 0:
