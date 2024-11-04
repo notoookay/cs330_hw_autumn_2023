@@ -159,7 +159,7 @@ def get_dataset(dataset: str, n_train: int, n_val: int = 100):
         d = datasets.load_dataset("xsum", split="train")
         filter_fn = lambda rows: [
             len(a.split(" ")) + len(s.split(" ")) < 100
-            or len(a.split(" ")) + len(s.split(" ")) > 3 # some summary has too short length (e.g. 1)
+            and len(s.split(" ")) > 3 # some summary has too short length (e.g. 1)
             for a, s in zip(rows["document"], rows["summary"])
         ]
         d = d.filter(filter_fn, batched=True, batch_size=None)

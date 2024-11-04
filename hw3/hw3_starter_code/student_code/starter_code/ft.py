@@ -64,9 +64,10 @@ class LoRALayerWrapper(nn.Module):
         ###
         self.lora_A, self.lora_B = None, None
         ## YOUR CODE HERE, complete for Q2.2b
+        self.scale = 1 / lora_rank
         shape = base_module.weight.shape # (d1, d2)
-        self.lora_A = nn.Parameter(torch.randn(shape[0], lora_rank) / np.sqrt(lora_rank)) # (d1, r)
-        self.lora_B = nn.Parameter(torch.randn(shape[1], lora_rank) / np.sqrt(lora_rank)) # (d2, r)
+        self.lora_A = nn.Parameter(torch.randn(shape[0], lora_rank)) # (d1, r)
+        self.lora_B = nn.Parameter(torch.zeros(shape[1], lora_rank)) # (d2, r)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         base_out = self.base_module(x)  # The output of the pre-trained module.
@@ -80,7 +81,7 @@ class LoRALayerWrapper(nn.Module):
             torch.matmul(x, self.lora_A), self.lora_B.T
         )  # (batch_size, d1) * (d1, r) * (r, d2) = (batch_size, d2)
 
-        return base_out + lora_output
+        return base_out + self.scale * lora_output
 
 
 def parameters_to_fine_tune(model: nn.Module, mode: str) -> Iterable[nn.Parameter]:
