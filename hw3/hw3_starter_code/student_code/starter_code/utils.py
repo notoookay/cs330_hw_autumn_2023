@@ -229,7 +229,8 @@ def early_stop_thresold(dataset: str):
     }[dataset]
 
 
-def fix_random_seeds(seed=123, set_system=True, set_torch=True):
+def fix_random_seeds(seed=42, set_system=True, set_torch=True):
+    # original seed: 123, reason to change: the original seed samples data with `xsum` summary of a single "."
     """
     Fix random seeds for reproducibility.
     Parameters
