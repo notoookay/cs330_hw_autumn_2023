@@ -159,6 +159,7 @@ def get_dataset(dataset: str, n_train: int, n_val: int = 100):
         d = datasets.load_dataset("xsum", split="train")
         filter_fn = lambda rows: [
             len(a.split(" ")) + len(s.split(" ")) < 100
+            or len(a.split(" ")) + len(s.split(" ")) > 3 # some summary has too short length (e.g. 1)
             for a, s in zip(rows["document"], rows["summary"])
         ]
         d = d.filter(filter_fn, batched=True, batch_size=None)
@@ -229,8 +230,7 @@ def early_stop_thresold(dataset: str):
     }[dataset]
 
 
-def fix_random_seeds(seed=42, set_system=True, set_torch=True):
-    # original seed: 123, reason to change: the original seed samples data with `xsum` summary of a single "."
+def fix_random_seeds(seed=123, set_system=True, set_torch=True):
     """
     Fix random seeds for reproducibility.
     Parameters
